@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+use crate::ops;
 
 // Status flags
 const CARRY_FLAG: u8 = 1 << 0;
@@ -12,6 +14,7 @@ const RESET_VECTOR: u16 = 0xFFFC;
 const RAM_START: u16 = 0x8000;
 
 // Addressing modes
+// Read more here https://skilldrick.github.io/easy6502/#addressing
 #[derive(Debug)]
 pub enum AM {
     Immediate,
@@ -22,7 +25,9 @@ pub enum AM {
     AbsoluteX,
     AbsoluteY,
     Indirect,
+    // Indexed Indirect
     IndirectX,
+    // Indirect Indexed
     IndirectY,
     Implicit,
 }
@@ -83,7 +88,6 @@ impl CPU {
 
     fn get_operand_address(&mut self, mode: &AM) -> u16 {
         match mode {
-            // 
             AM::Immediate => self.pc,
             AM::ZeroPage => self.mem_read(self.pc) as u16,
             AM::ZeroPageX => self.mem_read(self.pc).wrapping_add(self.reg_x) as u16,
@@ -96,67 +100,93 @@ impl CPU {
                 self.mem_read_u16(addr)
             }
             AM::IndirectX => {
-                todo!()
+                // Insane!
+                // Zero page X
+                let zero_page = self.mem_read(self.pc).wrapping_add(self.reg_x) as u16;
+                // Indirect
+                self.mem_read_u16(zero_page)
             }
             AM::IndirectY => {
-                todo!()
+                // Zero page
+                let zero_page = self.mem_read(self.pc) as u16;
+                // Indirect + Y
+                self.mem_read_u16(zero_page).wrapping_add(self.reg_y as u16)
             }
             AM::Implicit => todo!(),
         }
     }
 
     pub fn run(&mut self) {
+        // Reference to opcode hashmap
+        let ref opcodes: HashMap<u8, &'static ops::OPS> = *ops::OPS_MAP;
+
+        // Main loop
         loop {
+            // Fetch instruction
             let opc: u8 = self.mem_read(self.pc);
+
+            /* 
+            The program counter is incremented the correct number of times based on the instruction after the match
+            statement. It is incremented once here so that it correctly points to any potential operands.
+            */
             self.pc += 1;
+
+            // Store the state of the program counter to check later and avoid potential errors.
+            let pc_state = self.pc;
+
+            // Retrieve opcode information from the hashmap. Panic if the opcode is not found.
+            let opcode = opcodes.get(&opc).expect(&format!("Opcode {:x} not recognized", opc));
 
             match opc {
                 // LDA - Load Accumulator
-                // Immediate
-                0xA9 => {
-                    self.lda(&AM::Immediate);
-                    self.pc += 1;
-                }
-
-                // Zero Page
-                0xA5 => {
-                    self.lda(&AM::ZeroPage);
-                    self.pc += 1;
-                }
-
-                // Absolute
-                0xAD => {
-                    self.lda(&AM::Absolute);
-                    self.pc += 2;
+                0xA9 | 0xA5 | 0xB5| 0xAD | 0xBD | 0xB9 | 0xA1 | 0xB1 => {
+                    self.lda(&opcode.mode);
                 }
 
                 // LDX - Load X
-                0xA2 => {
-                    let param: u8 = self.mem_read(self.pc);
-                    self.pc += 1;
-
-                    self.ldx(param);
+                0xA2 | 0xA6 | 0xB6 | 0xAE | 0xBE => {
+                    self.ldx(&opcode.mode);
                 }
 
                 // LDY - Load Y
-                0xA0 => {
-                    let param: u8 = self.mem_read(self.pc);
-                    self.pc += 1;
+                0xA0 | 0xA4 | 0xB4 | 0xAC | 0xBC => {
+                    self.ldy(&opcode.mode);
+                }
 
-                    self.ldy(param);
+                // STA - Store Accumulator
+                0x85 | 0x95 | 0x8D | 0x9D | 0x99 | 0x81 | 0x91 => {
+                    self.sta(&opcode.mode);
+                }
+
+                // STX - Store X
+                0x86 | 0x96 | 0x8E => {
+                    self.stx(&opcode.mode);
+                }
+
+                // STY - Store Y
+                0x84 | 0x94 | 0x8C => {
+                    self.sty(&opcode.mode);
                 }
 
                 // TAX - Transfer Accumulator to X
                 0xAA => self.tax(),
 
+                // INX - Increment X
                 0xE8 => self.inx(),
 
+                // INY - Increment Y
                 0xC8 => self.iny(),
 
                 // BRK
                 0x00 => return,
 
                 _ => todo!(),
+            }
+
+            // Check program counter state and increment if unchanged
+            if pc_state == self.pc {
+                // -1 because of the prior increment
+                self.pc += (opcode.bytes - 1) as u16;
             }
         }
     }
@@ -189,14 +219,31 @@ impl CPU {
         self.set_zn(self.reg_a);
     }
 
-    fn ldx(&mut self, value: u8) {
-        self.reg_x = value;
+    fn ldx(&mut self, mode: &AM) {
+        let addr = self.get_operand_address(&mode);
+        self.reg_x = self.mem_read(addr);
         self.set_zn(self.reg_x);
     }
 
-    fn ldy(&mut self, value: u8) {
-        self.reg_y = value;
+    fn ldy(&mut self, mode: &AM) {
+        let addr = self.get_operand_address(&mode);
+        self.reg_y = self.mem_read(addr);
         self.set_zn(self.reg_y);
+    }
+
+    fn sta(&mut self, mode: &AM) {
+        let addr = self.get_operand_address(&mode);
+        self.mem_write(addr, self.reg_a);
+    }
+
+    fn stx(&mut self, mode: &AM) {
+        let addr = self.get_operand_address(&mode);
+        self.mem_write(addr, self.reg_x);
+    }
+
+    fn sty(&mut self, mode: &AM) {
+        let addr = self.get_operand_address(&mode);
+        self.mem_write(addr, self.reg_y);
     }
 
     fn tax(&mut self) {
@@ -267,6 +314,27 @@ mod test {
         cpu.mem_write_u16(0x1020, 0x22);
         cpu.load_run(vec![0xad, 0x20, 0x10, 0x00]);
         assert_eq!(cpu.reg_a, 0x22);
+    }
+
+    #[test]
+    fn test_lda_from_memory() {
+        let mut cpu = CPU::new();
+        cpu.mem_write(0x10, 0x55);
+        cpu.load_run(vec![0xa5, 0x10, 0x00]);
+        assert_eq!(cpu.reg_a, 0x55);
+    }
+
+    #[test]
+    fn test_0xa1_lda_indirect_x() {
+        let mut cpu = CPU::new();
+        cpu.load_run(vec![0xa2, 0x01, 0xa9, 0x05, 0x85, 0x01, 0xa9, 0x07, 0x85, 0x02, 0xa0, 0x0a, 0x8c, 0x05, 0x07, 0xa1, 0x00]);
+        assert_eq!(cpu.reg_a, cpu.reg_y);
+    }
+
+    #[test]
+    fn test_0xb1_lda_indirect_y() {
+        let mut cpu = CPU::new();
+        cpu.load_run(vec![0xa0, 0x01, 0xa9, 0x03, 0x85, 0x01, 0xa9, 0x07, 0x85, 0x02, 0xa2, 0x0a, 0x8e, 0x04, 0x07, 0xb1, 0x00]);
     }
 
     #[test]
