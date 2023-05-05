@@ -27,6 +27,7 @@ pub enum AM {
     Implicit,
 }
 
+// Mem reads and writes
 trait Mem {
     fn mem_read(&self, addr: u16) -> u8;
 
@@ -44,7 +45,6 @@ trait Mem {
 }
 
 impl Mem for CPU {
-    // Mem reads and writes
     fn mem_read(&self, addr: u16) -> u8 {
         self.memory[addr as usize]
     }
