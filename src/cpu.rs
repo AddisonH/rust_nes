@@ -264,7 +264,7 @@ impl CPU {
                 }
 
                 // NOP - No operation
-                0xEA => {},
+                0xEA => {}
 
                 // ORA - Logical Inclusive OR
                 0x09 | 0x05 | 0x15 | 0x0D | 0x1D | 0x19 | 0x01 | 0x11 => {
@@ -456,15 +456,19 @@ impl CPU {
     }
 
     fn dec(&mut self, mode: &AM) {
-        todo!();
+        let addr = self.get_op_addr(mode);
+        self.mem_write(addr, self.mem_read(addr).wrapping_sub(1));
+        self.set_zn(self.mem_read(addr));
     }
 
     fn dex(&mut self) {
-        todo!();
+        self.reg_x = self.reg_x.wrapping_sub(1);
+        self.set_zn(self.reg_x);
     }
 
     fn dey(&mut self) {
-        todo!();
+        self.reg_y = self.reg_y.wrapping_sub(1);
+        self.set_zn(self.reg_y);
     }
 
     fn eor(&mut self, mode: &AM) {
@@ -472,7 +476,9 @@ impl CPU {
     }
 
     fn inc(&mut self, mode: &AM) {
-        todo!();
+        let addr = self.get_op_addr(mode);
+        self.mem_write(addr, self.mem_read(addr).wrapping_add(1));
+        self.set_zn(self.mem_read(addr));
     }
 
     fn inx(&mut self) {
@@ -520,7 +526,7 @@ impl CPU {
     }
 
     fn pha(&mut self) {
-        self.mem_write(STACK + self.sp as u16 , self.reg_a);
+        self.mem_write(STACK + self.sp as u16, self.reg_a);
         self.sp = self.sp.wrapping_sub(1);
     }
 
