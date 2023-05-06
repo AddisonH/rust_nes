@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use crate::ops;
+use std::collections::HashMap;
 
 // Status flags
 const CARRY_FLAG: u8 = 1 << 0;
@@ -12,6 +12,9 @@ const NEGATIVE_FLAG: u8 = 1 << 7;
 
 const RESET_VECTOR: u16 = 0xFFFC;
 const RAM_START: u16 = 0x8000;
+
+const STACK: u16 = 0x0100;
+const SP_INIT: u8 = 0xFF;
 
 // Addressing modes
 // Read more here https://skilldrick.github.io/easy6502/#addressing
@@ -37,7 +40,7 @@ trait Mem {
     fn mem_read(&self, addr: u16) -> u8;
 
     fn mem_write(&mut self, addr: u16, data: u8);
-    
+
     fn mem_read_u16(&mut self, address: u16) -> u16 {
         u16::from_le_bytes([self.mem_read(address), self.mem_read(address + 1)])
     }
@@ -66,6 +69,7 @@ pub struct CPU {
     pub reg_y: u8,
     pub status: u8,
     pub pc: u16,
+    pub sp: u8,
     memory: [u8; 0xFFFF],
 }
 
@@ -81,12 +85,14 @@ impl CPU {
             status: 0,
             // Program counter
             pc: 0,
+            // Stack pointer
+            sp: SP_INIT,
             // Memory 64k
             memory: [0; 0xFFFF],
         }
     }
 
-    fn get_operand_address(&mut self, mode: &AM) -> u16 {
+    fn get_op_addr(&mut self, mode: &AM) -> u16 {
         match mode {
             AM::Immediate => self.pc,
             AM::ZeroPage => self.mem_read(self.pc) as u16,
@@ -125,7 +131,7 @@ impl CPU {
             // Fetch instruction
             let opc: u8 = self.mem_read(self.pc);
 
-            /* 
+            /*
             The program counter is incremented the correct number of times based on the instruction after the match
             statement. It is incremented once here so that it correctly points to any potential operands.
             */
@@ -135,11 +141,110 @@ impl CPU {
             let pc_state = self.pc;
 
             // Retrieve opcode information from the hashmap. Panic if the opcode is not found.
-            let opcode = opcodes.get(&opc).expect(&format!("Opcode {:x} not recognized", opc));
+            let opcode = opcodes
+                .get(&opc)
+                .expect(&format!("Opcode {:x} not recognized", opc));
 
             match opc {
+                // ADC - Add with carry
+                0x69 | 0x65 | 0x75 | 0x6D | 0x7D | 0x79 | 0x61 | 0x71 => {
+                    self.adc(&opcode.mode);
+                }
+
+                // AND - Logical AND
+                0x29 | 0x25 | 0x35 | 0x2D | 0x3D | 0x39 | 0x21 | 0x31 => {
+                    self.and(&opcode.mode);
+                }
+
+                // ASL - Arithmetic shift left
+                0x0A | 0x06 | 0x16 | 0x0E | 0x1E => {
+                    self.asl(&opcode.mode);
+                }
+
+                // BCC - Branch if carry clear
+                0x90 => self.bcc(),
+
+                // BCS - Branch if carry set
+                0xB0 => self.bcs(),
+
+                // BEQ - Branch if equal
+                0xF0 => self.beq(),
+
+                // BIT - Bit test
+                0x24 | 0x2C => self.bit(&opcode.mode),
+
+                // BMI - Branch if minus
+                0x30 => self.bmi(),
+
+                // BNE - Branch if not equal
+                0xD0 => self.bne(),
+
+                // BPL - Branch if positive
+                0x10 => self.bpl(),
+
+                // BRK - Break
+                0x00 => return,
+
+                // BVC - Branch if overflow clear
+                0x50 => self.bvc(),
+
+                // BVS - Branch if overflow set
+                0x70 => self.bvs(),
+
+                // CLC - Clear carry flag
+                0x18 => self.clc(),
+
+                // CLD - Clear decimal mode
+                0xD8 => self.cld(),
+
+                // CLI - Clear interrupt disable
+                0x58 => self.cli(),
+
+                // CLV - Clear overflow flag
+                0xB8 => self.clv(),
+
+                // CMP - Compare
+                0xC9 | 0xC5 | 0xD5 | 0xCD | 0xDD | 0xD9 | 0xC1 | 0xD1 => {
+                    self.cmp(&opcode.mode);
+                }
+
+                // CPX - Compare with X
+                0xE0 | 0xE4 | 0xEC => self.cpx(&opcode.mode),
+
+                // CPY - Compare with Y
+                0xC0 | 0xC4 | 0xCC => self.cpy(&opcode.mode),
+
+                // DEC - Decrement
+                0xC6 | 0xD6 | 0xCE | 0xDE => self.dec(&opcode.mode),
+
+                // DEX - Decrement X
+                0xCA => self.dex(),
+
+                // DEY - Decrement Y
+                0x88 => self.dey(),
+
+                // EOR - Exclusive OR
+                0x49 | 0x45 | 0x55 | 0x4D | 0x5D | 0x59 | 0x41 | 0x51 => {
+                    self.eor(&opcode.mode);
+                }
+
+                // INC - Increment
+                0xE6 | 0xF6 | 0xEE | 0xFE => self.inc(&opcode.mode),
+
+                // INX - Increment X
+                0xE8 => self.inx(),
+
+                // INY - Increment Y
+                0xC8 => self.iny(),
+
+                // JMP - Jump
+                0x4C | 0x6C => self.jmp(&opcode.mode),
+
+                // JSR - Jump to subroutine
+                0x20 => self.jsr(&opcode.mode),
+
                 // LDA - Load Accumulator
-                0xA9 | 0xA5 | 0xB5| 0xAD | 0xBD | 0xB9 | 0xA1 | 0xB1 => {
+                0xA9 | 0xA5 | 0xB5 | 0xAD | 0xBD | 0xB9 | 0xA1 | 0xB1 => {
                     self.lda(&opcode.mode);
                 }
 
@@ -153,32 +258,89 @@ impl CPU {
                     self.ldy(&opcode.mode);
                 }
 
+                // LSR - Logical shift right
+                0x4A | 0x46 | 0x56 | 0x4E | 0x5E => {
+                    self.lsr(&opcode.mode);
+                }
+
+                // NOP - No operation
+                0xEA => {},
+
+                // ORA - Logical Inclusive OR
+                0x09 | 0x05 | 0x15 | 0x0D | 0x1D | 0x19 | 0x01 | 0x11 => {
+                    self.ora(&opcode.mode);
+                }
+
+                // PHA - Push Accumulator
+                0x48 => self.pha(),
+
+                // PHP - Push Processor Status
+                0x08 => self.php(),
+
+                // PLA - Pull Accumulator
+                0x68 => self.pla(),
+
+                // PLP - Pull Processor Status
+                0x28 => self.plp(),
+
+                // ROL - Rotate Left
+                0x2A | 0x26 | 0x36 | 0x2E | 0x3E => {
+                    self.rol(&opcode.mode);
+                }
+
+                // ROR - Rotate Right
+                0x6A | 0x66 | 0x76 | 0x6E | 0x7E => {
+                    self.ror(&opcode.mode);
+                }
+
+                // RTI - Return from Interrupt
+                0x40 => self.rti(),
+
+                // RTS - Return from Subroutine
+                0x60 => self.rts(),
+
+                // SBC - Subtract with carry
+                0xE9 | 0xE5 | 0xF5 | 0xED | 0xFD | 0xF9 | 0xE1 | 0xF1 => {
+                    self.sbc(&opcode.mode);
+                }
+
+                // SEC - Set carry flag
+                0x38 => self.sec(),
+
+                // SED - Set decimal mode
+                0xF8 => self.sed(),
+
+                // SEI - Set interrupt disable
+                0x78 => self.sei(),
+
                 // STA - Store Accumulator
                 0x85 | 0x95 | 0x8D | 0x9D | 0x99 | 0x81 | 0x91 => {
                     self.sta(&opcode.mode);
                 }
 
                 // STX - Store X
-                0x86 | 0x96 | 0x8E => {
-                    self.stx(&opcode.mode);
-                }
+                0x86 | 0x96 | 0x8E => self.stx(&opcode.mode),
 
                 // STY - Store Y
-                0x84 | 0x94 | 0x8C => {
-                    self.sty(&opcode.mode);
-                }
+                0x84 | 0x94 | 0x8C => self.sty(&opcode.mode),
 
                 // TAX - Transfer Accumulator to X
                 0xAA => self.tax(),
 
-                // INX - Increment X
-                0xE8 => self.inx(),
+                // TAY - Transfer Accumulator to Y
+                0xA8 => self.tay(),
 
-                // INY - Increment Y
-                0xC8 => self.iny(),
+                // TSX - Transfer Stack Pointer to X
+                0xBA => self.tsx(),
 
-                // BRK
-                0x00 => return,
+                // TXA - Transfer X to Accumulator
+                0x8A => self.txa(),
+
+                // TXS - Transfer X to Stack Pointer
+                0x9A => self.txs(),
+
+                // TYA - Transfer Y to Accumulator
+                0x98 => self.tya(),
 
                 _ => todo!(),
             }
@@ -213,42 +375,104 @@ impl CPU {
     }
 
     // Begin instruction implementations
-    fn lda(&mut self, mode: &AM) {
-        let addr = self.get_operand_address(&mode);
-        self.reg_a = self.mem_read(addr);
+    fn adc(&mut self, mode: &AM) {
+        let addr = self.get_op_addr(mode);
+        self.reg_a = self.reg_a.wrapping_add(self.mem_read(addr));
+        todo!();
+    }
+
+    fn and(&mut self, mode: &AM) {
+        let addr = self.get_op_addr(mode);
+        self.reg_a = self.reg_a & self.mem_read(addr);
         self.set_zn(self.reg_a);
     }
 
-    fn ldx(&mut self, mode: &AM) {
-        let addr = self.get_operand_address(&mode);
-        self.reg_x = self.mem_read(addr);
-        self.set_zn(self.reg_x);
+    fn asl(&mut self, mode: &AM) {
+        todo!();
     }
 
-    fn ldy(&mut self, mode: &AM) {
-        let addr = self.get_operand_address(&mode);
-        self.reg_y = self.mem_read(addr);
-        self.set_zn(self.reg_y);
+    fn bcc(&mut self) {
+        todo!();
     }
 
-    fn sta(&mut self, mode: &AM) {
-        let addr = self.get_operand_address(&mode);
-        self.mem_write(addr, self.reg_a);
+    fn bcs(&mut self) {
+        todo!();
     }
 
-    fn stx(&mut self, mode: &AM) {
-        let addr = self.get_operand_address(&mode);
-        self.mem_write(addr, self.reg_x);
+    fn beq(&mut self) {
+        todo!();
     }
 
-    fn sty(&mut self, mode: &AM) {
-        let addr = self.get_operand_address(&mode);
-        self.mem_write(addr, self.reg_y);
+    fn bit(&mut self, mode: &AM) {
+        todo!();
     }
 
-    fn tax(&mut self) {
-        self.reg_x = self.reg_a;
-        self.set_zn(self.reg_x);
+    fn bmi(&mut self) {
+        todo!();
+    }
+
+    fn bne(&mut self) {
+        todo!();
+    }
+
+    fn bpl(&mut self) {
+        todo!();
+    }
+
+    fn bvc(&mut self) {
+        todo!();
+    }
+
+    fn bvs(&mut self) {
+        todo!();
+    }
+
+    fn clc(&mut self) {
+        todo!();
+    }
+
+    fn cld(&mut self) {
+        todo!();
+    }
+
+    fn cli(&mut self) {
+        todo!();
+    }
+
+    fn clv(&mut self) {
+        todo!();
+    }
+
+    fn cmp(&mut self, mode: &AM) {
+        todo!();
+    }
+
+    fn cpx(&mut self, mode: &AM) {
+        todo!();
+    }
+
+    fn cpy(&mut self, mode: &AM) {
+        todo!();
+    }
+
+    fn dec(&mut self, mode: &AM) {
+        todo!();
+    }
+
+    fn dex(&mut self) {
+        todo!();
+    }
+
+    fn dey(&mut self) {
+        todo!();
+    }
+
+    fn eor(&mut self, mode: &AM) {
+        todo!();
+    }
+
+    fn inc(&mut self, mode: &AM) {
+        todo!();
     }
 
     fn inx(&mut self) {
@@ -259,6 +483,137 @@ impl CPU {
     fn iny(&mut self) {
         self.reg_y = self.reg_y.wrapping_add(1);
         self.set_zn(self.reg_y);
+    }
+
+    fn jmp(&mut self, mode: &AM) {
+        todo!();
+    }
+
+    fn jsr(&mut self, mode: &AM) {
+        todo!();
+    }
+
+    fn lda(&mut self, mode: &AM) {
+        let addr = self.get_op_addr(&mode);
+        self.reg_a = self.mem_read(addr);
+        self.set_zn(self.reg_a);
+    }
+
+    fn ldx(&mut self, mode: &AM) {
+        let addr = self.get_op_addr(&mode);
+        self.reg_x = self.mem_read(addr);
+        self.set_zn(self.reg_x);
+    }
+
+    fn ldy(&mut self, mode: &AM) {
+        let addr = self.get_op_addr(&mode);
+        self.reg_y = self.mem_read(addr);
+        self.set_zn(self.reg_y);
+    }
+
+    fn lsr(&mut self, mode: &AM) {
+        todo!();
+    }
+
+    fn ora(&mut self, mode: &AM) {
+        todo!();
+    }
+
+    fn pha(&mut self) {
+        self.mem_write(STACK + self.sp as u16 , self.reg_a);
+        self.sp = self.sp.wrapping_sub(1);
+    }
+
+    fn php(&mut self) {
+        self.mem_write(STACK + self.sp as u16, self.status);
+        self.sp = self.sp.wrapping_sub(1);
+    }
+
+    fn pla(&mut self) {
+        self.reg_a = self.mem_read(STACK + self.sp as u16);
+        self.sp = self.sp.wrapping_add(1);
+    }
+
+    fn plp(&mut self) {
+        self.status = self.mem_read(STACK + self.sp as u16);
+        self.sp = self.sp.wrapping_add(1);
+    }
+
+    fn rol(&mut self, mode: &AM) {
+        todo!();
+    }
+
+    fn ror(&mut self, mode: &AM) {
+        todo!();
+    }
+
+    fn rti(&mut self) {
+        todo!();
+    }
+
+    fn rts(&mut self) {
+        todo!();
+    }
+
+    fn sbc(&mut self, mode: &AM) {
+        todo!();
+    }
+
+    fn sec(&mut self) {
+        todo!();
+    }
+
+    fn sed(&mut self) {
+        todo!();
+    }
+
+    fn sei(&mut self) {
+        todo!();
+    }
+
+    fn sta(&mut self, mode: &AM) {
+        let addr = self.get_op_addr(&mode);
+        self.mem_write(addr, self.reg_a);
+    }
+
+    fn stx(&mut self, mode: &AM) {
+        let addr = self.get_op_addr(&mode);
+        self.mem_write(addr, self.reg_x);
+    }
+
+    fn sty(&mut self, mode: &AM) {
+        let addr = self.get_op_addr(&mode);
+        self.mem_write(addr, self.reg_y);
+    }
+
+    fn tax(&mut self) {
+        self.reg_x = self.reg_a;
+        self.set_zn(self.reg_x);
+    }
+
+    fn tay(&mut self) {
+        self.reg_y = self.reg_a;
+        self.set_zn(self.reg_y);
+    }
+
+    fn tsx(&mut self) {
+        self.reg_x = self.mem_read(STACK + self.sp as u16);
+        self.sp = self.sp.wrapping_add(1);
+    }
+
+    fn txa(&mut self) {
+        self.reg_a = self.reg_x;
+        self.set_zn(self.reg_a);
+    }
+
+    fn txs(&mut self) {
+        self.mem_write(STACK + self.sp as u16, self.reg_x);
+        self.sp = self.sp.wrapping_sub(1);
+    }
+
+    fn tya(&mut self) {
+        self.reg_a = self.reg_y;
+        self.set_zn(self.reg_a);
     }
 
     // Flag helpers
@@ -327,14 +682,20 @@ mod test {
     #[test]
     fn test_0xa1_lda_indirect_x() {
         let mut cpu = CPU::new();
-        cpu.load_run(vec![0xa2, 0x01, 0xa9, 0x05, 0x85, 0x01, 0xa9, 0x07, 0x85, 0x02, 0xa0, 0x0a, 0x8c, 0x05, 0x07, 0xa1, 0x00]);
+        cpu.load_run(vec![
+            0xa2, 0x01, 0xa9, 0x05, 0x85, 0x01, 0xa9, 0x07, 0x85, 0x02, 0xa0, 0x0a, 0x8c, 0x05,
+            0x07, 0xa1, 0x00,
+        ]);
         assert_eq!(cpu.reg_a, cpu.reg_y);
     }
 
     #[test]
     fn test_0xb1_lda_indirect_y() {
         let mut cpu = CPU::new();
-        cpu.load_run(vec![0xa0, 0x01, 0xa9, 0x03, 0x85, 0x01, 0xa9, 0x07, 0x85, 0x02, 0xa2, 0x0a, 0x8e, 0x04, 0x07, 0xb1, 0x00]);
+        cpu.load_run(vec![
+            0xa0, 0x01, 0xa9, 0x03, 0x85, 0x01, 0xa9, 0x07, 0x85, 0x02, 0xa2, 0x0a, 0x8e, 0x04,
+            0x07, 0xb1, 0x00,
+        ]);
     }
 
     #[test]

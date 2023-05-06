@@ -3,7 +3,7 @@ use std::collections::HashMap;
 
 pub struct OPS {
     pub code: u8,
-    pub name: & 'static str,
+    pub name: &'static str,
     pub bytes: u8,
     pub cycles: u8,
     pub mode: AM,
