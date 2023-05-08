@@ -14,7 +14,8 @@ const RESET_VECTOR: u16 = 0xFFFC;
 const RAM_START: u16 = 0x8000;
 
 const STACK: u16 = 0x0100;
-const SP_INIT: u8 = 0xFF;
+const SP_INIT: u8 = 0xFD;
+// https://www.nesdev.org/wiki/CPU_power_up_state
 
 // Addressing modes
 // Read more here https://skilldrick.github.io/easy6502/#addressing
@@ -157,9 +158,12 @@ impl CPU {
                 }
 
                 // ASL - Arithmetic shift left
-                0x0A | 0x06 | 0x16 | 0x0E | 0x1E => {
+                0x06 | 0x16 | 0x0E | 0x1E => {
                     self.asl(&opcode.mode);
                 }
+
+                // ASL Accumulator
+                0x0A => self.asl_acc(),
 
                 // BCC - Branch if carry clear
                 0x90 => self.bcc(),
@@ -182,7 +186,7 @@ impl CPU {
                 // BPL - Branch if positive
                 0x10 => self.bpl(),
 
-                // BRK - Break
+                // BRK - Break TODO
                 0x00 => return,
 
                 // BVC - Branch if overflow clear
@@ -259,9 +263,12 @@ impl CPU {
                 }
 
                 // LSR - Logical shift right
-                0x4A | 0x46 | 0x56 | 0x4E | 0x5E => {
+                0x46 | 0x56 | 0x4E | 0x5E => {
                     self.lsr(&opcode.mode);
                 }
+
+                // LSR Accumulator
+                0x4A => self.lsr_acc(),
 
                 // NOP - No operation
                 0xEA => {}
@@ -284,14 +291,20 @@ impl CPU {
                 0x28 => self.plp(),
 
                 // ROL - Rotate Left
-                0x2A | 0x26 | 0x36 | 0x2E | 0x3E => {
+                0x26 | 0x36 | 0x2E | 0x3E => {
                     self.rol(&opcode.mode);
                 }
 
+                // ROL Accumulator
+                0x2A => self.rol_acc(),
+
                 // ROR - Rotate Right
-                0x6A | 0x66 | 0x76 | 0x6E | 0x7E => {
+                0x66 | 0x76 | 0x6E | 0x7E => {
                     self.ror(&opcode.mode);
                 }
+
+                // ROR Accumulator
+                0x6A => self.ror_acc(),
 
                 // RTI - Return from Interrupt
                 0x40 => self.rti(),
@@ -388,19 +401,27 @@ impl CPU {
     }
 
     fn asl(&mut self, mode: &AM) {
-        todo!();
+        let addr = self.get_op_addr(mode);
+        let data = self.mem_read(addr);
+        self.set_flag(CARRY_FLAG, data >> 7 == 1);
+        self.mem_write(addr, data.wrapping_shl(1));
+    }
+
+    fn asl_acc(&mut self) {
+        self.set_flag(CARRY_FLAG, self.reg_a >> 7 == 1);
+        self.reg_a = self.reg_a.wrapping_shl(1);
     }
 
     fn bcc(&mut self) {
-        todo!();
+        self.branch(self.status & CARRY_FLAG == 0);
     }
 
     fn bcs(&mut self) {
-        todo!();
+        self.branch(self.status & CARRY_FLAG != 0);
     }
 
     fn beq(&mut self) {
-        todo!();
+        self.branch(self.status & ZERO_FLAG != 0);
     }
 
     fn bit(&mut self, mode: &AM) {
@@ -408,51 +429,54 @@ impl CPU {
     }
 
     fn bmi(&mut self) {
-        todo!();
+        self.branch(self.status & NEGATIVE_FLAG != 0);
     }
 
     fn bne(&mut self) {
-        todo!();
+        self.branch(self.status & ZERO_FLAG == 0);
     }
 
     fn bpl(&mut self) {
-        todo!();
+        self.branch(self.status & NEGATIVE_FLAG == 0);
     }
 
     fn bvc(&mut self) {
-        todo!();
+        self.branch(self.status & OVERFLOW_FLAG == 0);
     }
 
     fn bvs(&mut self) {
-        todo!();
+        self.branch(self.status & OVERFLOW_FLAG != 0);
     }
 
     fn clc(&mut self) {
-        todo!();
+        self.clear_flag(CARRY_FLAG);
     }
 
     fn cld(&mut self) {
-        todo!();
+        self.clear_flag(DECIMAL_FLAG);
     }
 
     fn cli(&mut self) {
-        todo!();
+        self.clear_flag(IRQ_FLAG);
     }
 
     fn clv(&mut self) {
-        todo!();
+        self.clear_flag(OVERFLOW_FLAG);
     }
 
     fn cmp(&mut self, mode: &AM) {
-        todo!();
+        let addr = self.get_op_addr(mode);
+        self.set_compare(self.reg_a, self.mem_read(addr));
     }
 
     fn cpx(&mut self, mode: &AM) {
-        todo!();
+        let addr = self.get_op_addr(mode);
+        self.set_compare(self.reg_x, self.mem_read(addr));
     }
 
     fn cpy(&mut self, mode: &AM) {
-        todo!();
+        let addr = self.get_op_addr(mode);
+        self.set_compare(self.reg_y, self.mem_read(addr));
     }
 
     fn dec(&mut self, mode: &AM) {
@@ -472,7 +496,8 @@ impl CPU {
     }
 
     fn eor(&mut self, mode: &AM) {
-        todo!();
+        let addr = self.get_op_addr(mode);
+        self.reg_a ^= self.mem_read(addr);
     }
 
     fn inc(&mut self, mode: &AM) {
@@ -518,11 +543,21 @@ impl CPU {
     }
 
     fn lsr(&mut self, mode: &AM) {
-        todo!();
+        let addr = self.get_op_addr(mode);
+        let data = self.mem_read(addr);
+        self.set_flag(CARRY_FLAG, data & 1 == 1);
+        self.mem_write(addr, data.wrapping_shr(1));
+    }
+
+    fn lsr_acc(&mut self) {
+        self.set_flag(CARRY_FLAG, self.reg_a & 1 == 1);
+        self.reg_a = self.reg_a.wrapping_shr(1);
     }
 
     fn ora(&mut self, mode: &AM) {
-        todo!();
+        let addr = self.get_op_addr(mode);
+        self.reg_a = self.reg_a | self.mem_read(addr);
+        self.set_zn(self.reg_a);
     }
 
     fn pha(&mut self) {
@@ -546,11 +581,33 @@ impl CPU {
     }
 
     fn rol(&mut self, mode: &AM) {
-        todo!();
+        let addr = self.get_op_addr(mode);
+        let data = self.mem_read(addr);
+        let carry_bit = self.status & CARRY_FLAG;
+
+        self.set_flag(CARRY_FLAG, data >> 7 == 1);
+        self.mem_write(addr, data.wrapping_shl(1) | carry_bit);
+    }
+
+    fn rol_acc(&mut self) {
+        let carry_bit = self.status & CARRY_FLAG;
+        self.set_flag(CARRY_FLAG, self.reg_a >> 7 == 1);
+        self.reg_a = self.reg_a.wrapping_shl(1) | carry_bit;
     }
 
     fn ror(&mut self, mode: &AM) {
-        todo!();
+        let addr = self.get_op_addr(mode);
+        let data = self.mem_read(addr);
+        let carry_bit = self.status & CARRY_FLAG;
+
+        self.set_flag(CARRY_FLAG, data & 1 == 1);
+        self.mem_write(addr, data.wrapping_shr(1) | (carry_bit << 7));
+    }
+
+    fn ror_acc(&mut self) {
+        let carry_bit = self.status & CARRY_FLAG;
+        self.set_flag(CARRY_FLAG, self.reg_a & 1 == 1);
+        self.reg_a = self.reg_a.wrapping_shr(1) | (carry_bit << 7);
     }
 
     fn rti(&mut self) {
@@ -566,15 +623,15 @@ impl CPU {
     }
 
     fn sec(&mut self) {
-        todo!();
+        self.status |= CARRY_FLAG;
     }
 
     fn sed(&mut self) {
-        todo!();
+        self.status |= DECIMAL_FLAG;
     }
 
     fn sei(&mut self) {
-        todo!();
+        self.status |= IRQ_FLAG;
     }
 
     fn sta(&mut self, mode: &AM) {
@@ -631,6 +688,14 @@ impl CPU {
         }
     }
 
+    fn clear_flag(&mut self, flag: u8) {
+        self.status &= !flag;
+    }
+
+    // fn get_flag(&self, flag: u8) -> bool {
+    //     (self.status & flag) != 0
+    // }
+
     // Set zero and negative flags
     fn set_zn(&mut self, result: u8) {
         //set zero flag
@@ -638,6 +703,22 @@ impl CPU {
 
         // If bit 8 == 1, set negative flag
         self.set_flag(NEGATIVE_FLAG, (result & 0x80) != 0);
+    }
+
+    // Set carry, zero, negative flags for compare instructions
+    fn set_compare(&mut self, lhs: u8, rhs: u8) {
+        self.set_flag(CARRY_FLAG, lhs >= rhs);
+        self.set_flag(ZERO_FLAG, lhs == rhs);
+        self.set_flag(NEGATIVE_FLAG, lhs.wrapping_sub(rhs) & 0x80 != 0);
+    }
+
+    fn branch(&mut self, result: bool) {
+        if result {
+            // bytes from the next instruction
+            let jump = self.mem_read(self.pc) as i8;
+            // add jump plus one
+            self.pc = self.pc.wrapping_add(jump as u16).wrapping_add(1);
+        }
     }
 }
 
@@ -675,6 +756,27 @@ mod test {
         cpu.mem_write_u16(0x1020, 0x22);
         cpu.load_run(vec![0xad, 0x20, 0x10, 0x00]);
         assert_eq!(cpu.reg_a, 0x22);
+    }
+
+    #[test]
+    fn test_0xc9_cmp_immediate_negative() {
+        let mut cpu = CPU::new();
+        cpu.load_run(vec![0xa9, 0x10, 0xc9, 0x11, 0x00]);
+        assert_eq!(cpu.status & NEGATIVE_FLAG, 0x80);
+    }
+
+    #[test]
+    fn test_0xc9_cmp_immediate_equal() {
+        let mut cpu = CPU::new();
+        cpu.load_run(vec![0xa9, 0x10, 0xc9, 0x10, 0x00]);
+        assert!(cpu.status & ZERO_FLAG != 0);
+    }
+
+    #[test]
+    fn test_0xc9_cmp_immediate_greater() {
+        let mut cpu = CPU::new();
+        cpu.load_run(vec![0xa9, 0x11, 0xc9, 0x10, 0x00]);
+        assert!(cpu.status & CARRY_FLAG != 0);
     }
 
     #[test]
