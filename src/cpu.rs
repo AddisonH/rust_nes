@@ -37,7 +37,7 @@ pub enum AM {
 }
 
 // Mem reads and writes
-trait Mem {
+pub trait Mem {
     fn mem_read(&self, addr: u16) -> u8;
 
     fn mem_write(&mut self, addr: u16, data: u8);
@@ -124,8 +124,18 @@ impl CPU {
     }
 
     pub fn run(&mut self) {
+        self.run_with_callback(|_| {});
+    }
+
+    pub fn run_with_callback<F>(&mut self, mut callback: F)
+    where
+        F: FnMut(&mut CPU),
+    {
         // Reference to opcode hashmap
         let ref opcodes: HashMap<u8, &'static ops::OPS> = *ops::OPS_MAP;
+
+        // Execute callback before each instruction
+        callback(self);
 
         // Main loop
         loop {
@@ -377,8 +387,8 @@ impl CPU {
 
     // Load program into memory and run
     pub fn load(&mut self, program: Vec<u8>) {
-        self.memory[0x8000..(0x8000 + program.len())].copy_from_slice(&program[..]);
-        self.mem_write_u16(RESET_VECTOR, RAM_START);
+        self.memory[0x0600..(0x0600 + program.len())].copy_from_slice(&program[..]);
+        self.mem_write_u16(RESET_VECTOR, 0x0600);
     }
 
     pub fn load_run(&mut self, program: Vec<u8>) {
