@@ -7,6 +7,7 @@ const ZERO_FLAG: u8 = 1 << 1;
 const IRQ_FLAG: u8 = 1 << 2;
 const DECIMAL_FLAG: u8 = 1 << 3;
 const BREAK_FLAG: u8 = 1 << 4;
+const BREAK_2_FLAG: u8 = 1 << 5;
 const OVERFLOW_FLAG: u8 = 1 << 6;
 const NEGATIVE_FLAG: u8 = 1 << 7;
 
@@ -33,7 +34,6 @@ pub enum AM {
     IndirectX,
     // Indirect Indexed
     IndirectY,
-    Implicit,
 }
 
 // Mem reads and writes
@@ -119,7 +119,6 @@ impl CPU {
                 // Indirect + Y
                 self.mem_read_u16(zero_page).wrapping_add(self.reg_y as u16)
             }
-            AM::Implicit => todo!(),
         }
     }
 
@@ -242,7 +241,10 @@ impl CPU {
                 0xC8 => self.iny(),
 
                 // JMP - Jump
-                0x4C | 0x6C => self.jmp(&opcode.mode),
+                0x4C => self.jmp_absolute(),
+
+                // JMP indirect
+                0x6C => self.jmp_indirect(),
 
                 // JSR - Jump to subroutine
                 0x20 => self.jsr(&opcode.mode),
@@ -390,8 +392,19 @@ impl CPU {
     // Begin instruction implementations
     fn adc(&mut self, mode: &AM) {
         let addr = self.get_op_addr(mode);
+        let data = self.mem_read(addr);
         self.reg_a = self.reg_a.wrapping_add(self.mem_read(addr));
-        todo!();
+        self.reg_a = self.reg_a.wrapping_add(self.status & CARRY_FLAG);
+    }
+
+    fn add_acc(&mut self, data: u8) {
+        let sum: u16 = self.reg_a as u16 + data as u16 + (self.status & CARRY_FLAG) as u16;
+        let carry = sum > 0xFF;
+        if carry {
+            self.status |= CARRY_FLAG;
+        } else {
+            self.clear_flag(CARRY_FLAG);
+        }
     }
 
     fn and(&mut self, mode: &AM) {
@@ -425,7 +438,12 @@ impl CPU {
     }
 
     fn bit(&mut self, mode: &AM) {
-        todo!();
+        let addr = self.get_op_addr(mode);
+        let data = self.mem_read(addr);
+        self.set_flag(ZERO_FLAG, self.reg_a & data == 0);
+
+        self.set_flag(NEGATIVE_FLAG, data & 0x80 == 0x80);
+        self.set_flag(OVERFLOW_FLAG, data & 0x40 == 0x40);
     }
 
     fn bmi(&mut self) {
@@ -516,12 +534,21 @@ impl CPU {
         self.set_zn(self.reg_y);
     }
 
-    fn jmp(&mut self, mode: &AM) {
-        todo!();
+    fn jmp_absolute(&mut self) {
+        self.pc = self.mem_read_u16(self.pc);
+    }
+
+    fn jmp_indirect(&mut self) {
+        // TODO write special case for indirect bug
+        let addr = self.mem_read_u16(self.pc);
+        self.pc = self.mem_read_u16(addr);
     }
 
     fn jsr(&mut self, mode: &AM) {
-        todo!();
+        let addr = self.get_op_addr(mode);
+        // Push return address - 1
+        self.push_u16(self.pc + 2 - 1);
+        self.pc = addr;
     }
 
     fn lda(&mut self, mode: &AM) {
@@ -561,23 +588,24 @@ impl CPU {
     }
 
     fn pha(&mut self) {
-        self.mem_write(STACK + self.sp as u16, self.reg_a);
-        self.sp = self.sp.wrapping_sub(1);
+        self.push(self.reg_a);
     }
 
     fn php(&mut self) {
-        self.mem_write(STACK + self.sp as u16, self.status);
-        self.sp = self.sp.wrapping_sub(1);
+        let mut flags = self.status.clone();
+        flags |= BREAK_FLAG;
+        flags |= BREAK_2_FLAG;
+        self.push(flags);
     }
 
     fn pla(&mut self) {
-        self.reg_a = self.mem_read(STACK + self.sp as u16);
-        self.sp = self.sp.wrapping_add(1);
+        self.reg_a = self.pull();
     }
 
     fn plp(&mut self) {
-        self.status = self.mem_read(STACK + self.sp as u16);
-        self.sp = self.sp.wrapping_add(1);
+        self.status = self.pull();
+        self.clear_flag(BREAK_FLAG);
+        self.clear_flag(BREAK_2_FLAG);
     }
 
     fn rol(&mut self, mode: &AM) {
@@ -611,11 +639,14 @@ impl CPU {
     }
 
     fn rti(&mut self) {
-        todo!();
+        self.status = self.pull();
+        self.clear_flag(BREAK_FLAG);
+        self.set_flag(BREAK_2_FLAG, true);
+        self.pc = self.pull_u16();
     }
 
     fn rts(&mut self) {
-        todo!();
+        self.pc = self.pull_u16() + 1;
     }
 
     fn sbc(&mut self, mode: &AM) {
@@ -677,6 +708,30 @@ impl CPU {
     fn tya(&mut self) {
         self.reg_a = self.reg_y;
         self.set_zn(self.reg_a);
+    }
+
+    fn push(&mut self, data: u8) {
+        self.mem_write(STACK + self.sp as u16, data);
+        self.sp = self.sp.wrapping_sub(1);
+    }
+
+    fn push_u16(&mut self, data: u16) {
+        let bytes: [u8; 2] = data.to_le_bytes();
+        self.push(bytes[1]);
+        self.push(bytes[0]);
+        self.sp = self.sp.wrapping_sub(2);
+    }
+
+    fn pull(&mut self) -> u8 {
+        let data = self.mem_read(STACK + self.sp as u16);
+        self.sp = self.sp.wrapping_add(1);
+        data
+    }
+
+    fn pull_u16(&mut self) -> u16 {
+        let lo = self.pull();
+        let hi = self.pull();
+        u16::from_le_bytes([lo, hi])
     }
 
     // Flag helpers
