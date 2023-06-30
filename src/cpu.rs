@@ -33,7 +33,6 @@ pub enum AM {
     IndirectX,
     // Indirect Indexed
     IndirectY,
-    Implicit,
 }
 
 // Mem reads and writes
@@ -119,7 +118,6 @@ impl CPU {
                 // Indirect + Y
                 self.mem_read_u16(zero_page).wrapping_add(self.reg_y as u16)
             }
-            AM::Implicit => todo!(),
         }
     }
 
@@ -196,7 +194,7 @@ impl CPU {
                 // BPL - Branch if positive
                 0x10 => self.bpl(),
 
-                // BRK - Break TODO
+                // BRK - Break (This will work for now)
                 0x00 => return,
 
                 // BVC - Branch if overflow clear
@@ -365,7 +363,7 @@ impl CPU {
                 // TYA - Transfer Y to Accumulator
                 0x98 => self.tya(),
 
-                _ => todo!(),
+                _ => panic!("Unknown opcode {:x}", opc),
             }
 
             // Check program counter state and increment if unchanged
@@ -435,7 +433,11 @@ impl CPU {
     }
 
     fn bit(&mut self, mode: &AM) {
-        todo!();
+        let addr = self.get_op_addr(mode);
+        let data = self.mem_read(addr);
+        self.set_flag(ZERO_FLAG, data & self.reg_a == 0);
+        self.set_flag(OVERFLOW_FLAG, data & 0x40 != 0);
+        self.set_flag(NEGATIVE_FLAG, data & 0x80 != 0);
     }
 
     fn bmi(&mut self) {
@@ -527,7 +529,21 @@ impl CPU {
     }
 
     fn jmp(&mut self, mode: &AM) {
-        todo!();
+        self.pc = self.mem_read_u16(self.pc);
+    }
+
+    fn jmp_indirect(&mut self) {
+        // Special behavior for 6502 bug
+        let addr = self.mem_read_u16(self.pc);
+        let indirect = if addr & 0x00FF == 0x00FF {
+            let lo = self.mem_read(addr);
+            let hi = self.mem_read(addr & 0xFF00);
+            (hi as u16) << 8 | (lo as u16)
+        } else {
+            self.mem_read_u16(addr)
+        };
+
+        self.pc = indirect;
     }
 
     fn jsr(&mut self, mode: &AM) {
