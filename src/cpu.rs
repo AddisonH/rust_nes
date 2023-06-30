@@ -37,7 +37,7 @@ pub enum AM {
 }
 
 // Mem reads and writes
-trait Mem {
+pub trait Mem {
     fn mem_read(&self, addr: u16) -> u8;
 
     fn mem_write(&mut self, addr: u16, data: u8);
@@ -123,8 +123,18 @@ impl CPU {
     }
 
     pub fn run(&mut self) {
+        self.run_with_callback(|_| {});
+    }
+
+    pub fn run_with_callback<F>(&mut self, mut callback: F)
+    where
+        F: FnMut(&mut CPU),
+    {
         // Reference to opcode hashmap
         let ref opcodes: HashMap<u8, &'static ops::OPS> = *ops::OPS_MAP;
+
+        // Execute callback before each instruction
+        callback(self);
 
         // Main loop
         loop {
@@ -185,7 +195,7 @@ impl CPU {
                 // BPL - Branch if positive
                 0x10 => self.bpl(),
 
-                // BRK - Break TODO
+                // BRK - Break (This will work for now)
                 0x00 => return,
 
                 // BVC - Branch if overflow clear
@@ -357,7 +367,7 @@ impl CPU {
                 // TYA - Transfer Y to Accumulator
                 0x98 => self.tya(),
 
-                _ => todo!(),
+                _ => panic!("Unknown opcode {:x}", opc),
             }
 
             // Check program counter state and increment if unchanged
@@ -379,8 +389,8 @@ impl CPU {
 
     // Load program into memory and run
     pub fn load(&mut self, program: Vec<u8>) {
-        self.memory[0x8000..(0x8000 + program.len())].copy_from_slice(&program[..]);
-        self.mem_write_u16(RESET_VECTOR, RAM_START);
+        self.memory[0x0600..(0x0600 + program.len())].copy_from_slice(&program[..]);
+        self.mem_write_u16(RESET_VECTOR, 0x0600);
     }
 
     pub fn load_run(&mut self, program: Vec<u8>) {
@@ -440,10 +450,9 @@ impl CPU {
     fn bit(&mut self, mode: &AM) {
         let addr = self.get_op_addr(mode);
         let data = self.mem_read(addr);
-        self.set_flag(ZERO_FLAG, self.reg_a & data == 0);
-
-        self.set_flag(NEGATIVE_FLAG, data & 0x80 == 0x80);
-        self.set_flag(OVERFLOW_FLAG, data & 0x40 == 0x40);
+        self.set_flag(ZERO_FLAG, data & self.reg_a == 0);
+        self.set_flag(OVERFLOW_FLAG, data & 0x40 != 0);
+        self.set_flag(NEGATIVE_FLAG, data & 0x80 != 0);
     }
 
     fn bmi(&mut self) {
@@ -534,14 +543,22 @@ impl CPU {
         self.set_zn(self.reg_y);
     }
 
-    fn jmp_absolute(&mut self) {
+    fn jmp(&mut self, mode: &AM) {
         self.pc = self.mem_read_u16(self.pc);
     }
 
     fn jmp_indirect(&mut self) {
-        // TODO write special case for indirect bug
+        // Special behavior for 6502 bug
         let addr = self.mem_read_u16(self.pc);
-        self.pc = self.mem_read_u16(addr);
+        let indirect = if addr & 0x00FF == 0x00FF {
+            let lo = self.mem_read(addr);
+            let hi = self.mem_read(addr & 0xFF00);
+            (hi as u16) << 8 | (lo as u16)
+        } else {
+            self.mem_read_u16(addr)
+        };
+
+        self.pc = indirect;
     }
 
     fn jsr(&mut self, mode: &AM) {

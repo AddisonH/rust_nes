@@ -7,3 +7,6 @@ edition = "2021"
 
 [dependencies]
 lazy_static = "1.4.0"
+
+sdl2 = "0.34.0"
+rand = "=0.7.3"
