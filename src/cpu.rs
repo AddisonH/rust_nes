@@ -34,6 +34,7 @@ pub enum AM {
     IndirectX,
     // Indirect Indexed
     IndirectY,
+    Implicit,
 }
 
 // Mem reads and writes
@@ -60,6 +61,12 @@ impl Mem for CPU {
 
     fn mem_write(&mut self, addr: u16, data: u8) {
         self.memory[addr as usize] = data;
+    }
+}
+
+impl Default for CPU {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -100,8 +107,8 @@ impl CPU {
             AM::ZeroPageX => self.mem_read(self.pc).wrapping_add(self.reg_x) as u16,
             AM::ZeroPageY => self.mem_read(self.pc).wrapping_add(self.reg_y) as u16,
             AM::Absolute => self.mem_read_u16(self.pc),
-            AM::AbsoluteX => self.mem_read_u16(self.pc).wrapping_add(self.reg_x as u16) as u16,
-            AM::AbsoluteY => self.mem_read_u16(self.pc).wrapping_add(self.reg_y as u16) as u16,
+            AM::AbsoluteX => self.mem_read_u16(self.pc).wrapping_add(self.reg_x as u16),
+            AM::AbsoluteY => self.mem_read_u16(self.pc).wrapping_add(self.reg_y as u16),
             AM::Indirect => {
                 let addr = self.mem_read_u16(self.pc);
                 self.mem_read_u16(addr)
@@ -119,6 +126,7 @@ impl CPU {
                 // Indirect + Y
                 self.mem_read_u16(zero_page).wrapping_add(self.reg_y as u16)
             }
+            AM::Implicit => panic!("Addressing mode not supported"),
         }
     }
 
@@ -131,15 +139,16 @@ impl CPU {
         F: FnMut(&mut CPU),
     {
         // Reference to opcode hashmap
-        let ref opcodes: HashMap<u8, &'static ops::OPS> = *ops::OPS_MAP;
-
-        // Execute callback before each instruction
-        callback(self);
+        let opcodes: &HashMap<u8, &'static ops::OPS> = &ops::OPS_MAP;
 
         // Main loop
         loop {
+            // Execute callback before each instruction
+            callback(self);
+
             // Fetch instruction
             let opc: u8 = self.mem_read(self.pc);
+            // println!("PC: {:04X}, OP: {:02X}", self.pc, opc);
 
             /*
             The program counter is incremented the correct number of times based on the instruction after the match
@@ -153,7 +162,7 @@ impl CPU {
             // Retrieve opcode information from the hashmap. Panic if the opcode is not found.
             let opcode = opcodes
                 .get(&opc)
-                .expect(&format!("Opcode {:x} not recognized", opc));
+                .unwrap_or_else(|| panic!("Opcode {:x} not recognized", opc));
 
             match opc {
                 // ADC - Add with carry
@@ -403,23 +412,38 @@ impl CPU {
     fn adc(&mut self, mode: &AM) {
         let addr = self.get_op_addr(mode);
         let data = self.mem_read(addr);
-        self.reg_a = self.reg_a.wrapping_add(self.mem_read(addr));
-        self.reg_a = self.reg_a.wrapping_add(self.status & CARRY_FLAG);
+        self.add_acc(data);
     }
 
     fn add_acc(&mut self, data: u8) {
+        // Calculate sum
         let sum: u16 = self.reg_a as u16 + data as u16 + (self.status & CARRY_FLAG) as u16;
+
+        // Set carry flag
         let carry = sum > 0xFF;
         if carry {
             self.status |= CARRY_FLAG;
         } else {
             self.clear_flag(CARRY_FLAG);
         }
+
+        // Set overflow flag
+        // https://www.righto.com/2012/12/the-6502-overflow-flag-explained.html
+        let result = sum as u8;
+        let overflow = (data ^ result) & (result ^ self.reg_a) & 0x80 != 0;
+        if overflow {
+            self.status |= OVERFLOW_FLAG;
+        } else {
+            self.clear_flag(OVERFLOW_FLAG);
+        }
+
+        self.reg_a = result;
+        self.set_zn(self.reg_a);
     }
 
     fn and(&mut self, mode: &AM) {
         let addr = self.get_op_addr(mode);
-        self.reg_a = self.reg_a & self.mem_read(addr);
+        self.reg_a &= self.mem_read(addr);
         self.set_zn(self.reg_a);
     }
 
@@ -543,7 +567,7 @@ impl CPU {
         self.set_zn(self.reg_y);
     }
 
-    fn jmp(&mut self, mode: &AM) {
+    fn jmp_absolute(&mut self) {
         self.pc = self.mem_read_u16(self.pc);
     }
 
@@ -569,19 +593,19 @@ impl CPU {
     }
 
     fn lda(&mut self, mode: &AM) {
-        let addr = self.get_op_addr(&mode);
+        let addr = self.get_op_addr(mode);
         self.reg_a = self.mem_read(addr);
         self.set_zn(self.reg_a);
     }
 
     fn ldx(&mut self, mode: &AM) {
-        let addr = self.get_op_addr(&mode);
+        let addr = self.get_op_addr(mode);
         self.reg_x = self.mem_read(addr);
         self.set_zn(self.reg_x);
     }
 
     fn ldy(&mut self, mode: &AM) {
-        let addr = self.get_op_addr(&mode);
+        let addr = self.get_op_addr(mode);
         self.reg_y = self.mem_read(addr);
         self.set_zn(self.reg_y);
     }
@@ -600,7 +624,7 @@ impl CPU {
 
     fn ora(&mut self, mode: &AM) {
         let addr = self.get_op_addr(mode);
-        self.reg_a = self.reg_a | self.mem_read(addr);
+        self.reg_a |= self.mem_read(addr);
         self.set_zn(self.reg_a);
     }
 
@@ -609,7 +633,7 @@ impl CPU {
     }
 
     fn php(&mut self) {
-        let mut flags = self.status.clone();
+        let mut flags = self.status;
         flags |= BREAK_FLAG;
         flags |= BREAK_2_FLAG;
         self.push(flags);
@@ -667,7 +691,11 @@ impl CPU {
     }
 
     fn sbc(&mut self, mode: &AM) {
-        todo!();
+        let addr = self.get_op_addr(mode);
+        let data = self.mem_read(addr);
+
+        // A - B = A + (-B) and -B = !B + 1
+        self.add_acc(data.wrapping_neg().wrapping_sub(1));
     }
 
     fn sec(&mut self) {
@@ -683,17 +711,17 @@ impl CPU {
     }
 
     fn sta(&mut self, mode: &AM) {
-        let addr = self.get_op_addr(&mode);
+        let addr = self.get_op_addr(mode);
         self.mem_write(addr, self.reg_a);
     }
 
     fn stx(&mut self, mode: &AM) {
-        let addr = self.get_op_addr(&mode);
+        let addr = self.get_op_addr(mode);
         self.mem_write(addr, self.reg_x);
     }
 
     fn sty(&mut self, mode: &AM) {
-        let addr = self.get_op_addr(&mode);
+        let addr = self.get_op_addr(mode);
         self.mem_write(addr, self.reg_y);
     }
 
@@ -728,25 +756,26 @@ impl CPU {
     }
 
     fn push(&mut self, data: u8) {
-        self.mem_write(STACK + self.sp as u16, data);
+        self.mem_write(STACK + (self.sp as u16), data);
         self.sp = self.sp.wrapping_sub(1);
     }
 
     fn push_u16(&mut self, data: u16) {
+        // 0x1234 -> [0x34, 0x12]
         let bytes: [u8; 2] = data.to_le_bytes();
+        // Push 0x12
         self.push(bytes[1]);
+        // Push 0x34
         self.push(bytes[0]);
-        self.sp = self.sp.wrapping_sub(2);
     }
 
     fn pull(&mut self) -> u8 {
-        let data = self.mem_read(STACK + self.sp as u16);
         self.sp = self.sp.wrapping_add(1);
-        data
+        self.mem_read(STACK + (self.sp as u16))
     }
 
     fn pull_u16(&mut self) -> u16 {
-        let lo = self.pull();
+        let lo: u8 = self.pull();
         let hi = self.pull();
         u16::from_le_bytes([lo, hi])
     }

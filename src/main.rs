@@ -64,7 +64,7 @@ fn main() {
     cpu.reset();
 
     // Init screen state
-    let mut screen_state = [0 as u8; 32 * 32 * 3];
+    let mut screen_state = [0_u8; 32 * 32 * 3];
     let mut rng = rand::thread_rng();
 
     // Start cpu with input handling and screen updating callback
