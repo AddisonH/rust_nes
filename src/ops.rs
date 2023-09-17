@@ -121,9 +121,9 @@ lazy_static! {
         OPS::new(0xC8, "INY", 1, 2, AM::Implicit),
 
         // Jumps
-        OPS::new(0x4C, "JMP", 3, 3, AM::Absolute),
+        OPS::new(0x4C, "JMP", 3, 3, AM::Implicit),
         OPS::new(0x6C, "JMP", 3, 5, AM::Indirect),
-        OPS::new(0x20, "JSR", 3, 6, AM::Absolute),
+        OPS::new(0x20, "JSR", 3, 6, AM::Implicit),
 
         // Load accumulator
         OPS::new(0xA9, "LDA", 2, 2, AM::Immediate),
