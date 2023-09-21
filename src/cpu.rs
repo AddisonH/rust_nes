@@ -393,7 +393,82 @@ impl CPU {
                 // TYA - Transfer Y to Accumulator
                 0x98 => self.tya(),
 
-                _ => panic!("Unknown opcode {:x}", opc),
+                // Unnofficial opcodes
+                // *AAC - AND byte with accumulator
+                0x0B | 0x2B => self.u_aac(),
+
+                // *SAX - AND accumulator with X
+                0x87 | 0x97 | 0x83 | 0x8F => self.u_sax(&opcode.mode),
+
+                // *ARR
+                0x6B => self.u_arr(),
+
+                // *ASR
+                0x4B => self.u_asr(),
+
+                // *ATX
+                0xAB => self.u_atx(),
+
+                // *AXA
+                0x9F | 0x93 => self.u_axa(&opcode.mode),
+
+                // *AXS
+                0xCB => self.u_axs(),
+
+                // *DCP
+                0xC7 | 0xD7 | 0xCF | 0xDF | 0xDB | 0xC3 | 0xD3 => {
+                    self.u_dcp(&opcode.mode);
+                }
+
+                // *DOP
+                0x04 | 0x14 | 0x34 | 0x44 | 0x54 | 0x64 | 0x74 | 0x80 | 0x82 | 0x89 | 0xC2
+                | 0xD4 | 0xE2 | 0xF4 => {}
+
+                // *ISC
+                0xE7 | 0xF7 | 0xEF | 0xFF | 0xFB | 0xE3 | 0xF3 => self.u_isb(&opcode.mode),
+
+                // *KIL
+                0x02 | 0x12 | 0x22 | 0x32 | 0x42 | 0x52 | 0x62 | 0x72 | 0x92 | 0xB2 | 0xD2
+                | 0xF2 => return,
+
+                // *LAR
+                0xBB => self.u_lar(&opcode.mode),
+
+                // *LAX
+                0xA7 | 0xB7 | 0xAF | 0xBF | 0xA3 | 0xB3 => self.u_lax(&opcode.mode),
+
+                // *NOP
+                0x1A | 0x3A | 0x5A | 0x7A | 0xDA | 0xFA => {}
+
+                // *RLA
+                0x27 | 0x37 | 0x2F | 0x3F | 0x3B | 0x23 | 0x33 => self.u_rla(&opcode.mode),
+
+                // *RRA
+                0x67 | 0x77 | 0x6F | 0x7F | 0x7B | 0x63 | 0x73 => self.u_rra(&opcode.mode),
+
+                // *SBC
+                0xEB => self.sbc(&opcode.mode),
+
+                // *SLO
+                0x07 | 0x17 | 0x0F | 0x1F | 0x1B | 0x03 | 0x13 => self.u_slo(&opcode.mode),
+
+                // *SRE
+                0x47 | 0x57 | 0x4F | 0x5F | 0x5B | 0x43 | 0x53 => self.u_sre(&opcode.mode),
+
+                // *SXA
+                0x9E => self.u_sxa(&opcode.mode),
+
+                // *SYA
+                0x9C => self.u_sya(&opcode.mode),
+
+                // *TOP
+                0x0C | 0x1C | 0x3C | 0x5C | 0x7C | 0xDC | 0xFC => {}
+
+                // *XAA
+                0x8B => self.u_xaa(),
+
+                // *XAS
+                0x9B => self.u_xas(&opcode.mode),
             }
 
             // Check program counter state and increment if unchanged
@@ -786,6 +861,137 @@ impl CPU {
     fn tya(&mut self) {
         self.reg_a = self.reg_y;
         self.set_zn(self.reg_a);
+    }
+
+    // Unnofficial opcodes
+    // Only implementing codes used in the nestest
+    fn u_aac(&mut self) {
+        self.reg_a &= self.mem_read(self.pc);
+        self.set_zn(self.reg_a);
+        self.set_flag(CARRY_FLAG, self.reg_a & 1 << 7 == 1);
+    }
+
+    fn u_sax(&mut self, mode: &AM) {
+        let addr = self.get_op_addr(mode);
+        let data = self.reg_a & self.reg_x;
+        self.mem_write(addr, data);
+    }
+
+    fn u_arr(&mut self) {
+        // Unimplemented
+        println!("Unimplemented opcode *ARR");
+    }
+
+    fn u_asr(&mut self) {
+        // Unimplemented
+        println!("Unimplemented opcode *ASR");
+    }
+
+    fn u_atx(&mut self) {
+        // Unimplemented
+        println!("Unimplemented opcode *ATX");
+    }
+
+    fn u_axa(&mut self, _mode: &AM) {
+        // Unimplemented
+        println!("Unimplemented opcode *AXA");
+    }
+
+    fn u_axs(&mut self) {
+        // Unimplemented
+        println!("Unimplemented opcode *AXS");
+    }
+
+    fn u_dcp(&mut self, mode: &AM) {
+        let addr = self.get_op_addr(mode);
+        let data = self.mem_read(addr).wrapping_sub(1);
+        self.mem_write(addr, data);
+        self.set_compare(self.reg_a, data);
+    }
+
+    fn u_isb(&mut self, mode: &AM) {
+        let addr = self.get_op_addr(mode);
+        let data = self.mem_read(addr).wrapping_add(1);
+        self.mem_write(addr, data);
+
+        // A - B = A + (-B) and -B = !B + 1
+        self.add_acc(data.wrapping_neg().wrapping_sub(1));
+    }
+
+    fn u_lar(&mut self, _mode: &AM) {
+        // Unimplemented
+        println!("Unimplemented opcode *LAR");
+    }
+
+    fn u_lax(&mut self, mode: &AM) {
+        let addr = self.get_op_addr(mode);
+        let data = self.mem_read(addr);
+        self.reg_a = data;
+        self.reg_x = data;
+        self.set_zn(data);
+    }
+
+    fn u_rla(&mut self, mode: &AM) {
+        let addr = self.get_op_addr(mode);
+        let data = self.mem_read(addr);
+        let carry_bit = self.status & CARRY_FLAG;
+        let rot_data = data.wrapping_shl(1) | carry_bit;
+        self.mem_write(addr, rot_data);
+        self.set_flag(CARRY_FLAG, data >> 7 == 1);
+
+        self.reg_a &= rot_data;
+        self.set_zn(self.reg_a);
+    }
+
+    fn u_rra(&mut self, mode: &AM) {
+        let addr = self.get_op_addr(mode);
+        let data = self.mem_read(addr);
+        let carry_bit = self.status & CARRY_FLAG;
+        let rot_data = data.wrapping_shr(1) | (carry_bit << 7);
+        self.set_flag(CARRY_FLAG, data & 1 == 1);
+
+        self.mem_write(addr, rot_data);
+        self.set_zn(rot_data);
+
+        self.add_acc(rot_data);
+    }
+
+    fn u_slo(&mut self, mode: &AM) {
+        let addr = self.get_op_addr(mode);
+        let data = self.mem_read(addr);
+        let shift_data = data.wrapping_shl(1);
+        self.mem_write(addr, shift_data);
+        self.set_flag(CARRY_FLAG, data >> 7 == 1);
+        self.reg_a |= shift_data;
+    }
+
+    fn u_sre(&mut self, mode: &AM) {
+        let addr = self.get_op_addr(mode);
+        let data = self.mem_read(addr);
+        let shift_data = data.wrapping_shr(1);
+        self.mem_write(addr, shift_data);
+        self.set_flag(CARRY_FLAG, data & 1 == 1);
+        self.reg_a ^= shift_data;
+    }
+
+    fn u_sxa(&mut self, _mode: &AM) {
+        // Unimplemented
+        println!("Unimplemented opcode *SXA");
+    }
+
+    fn u_sya(&mut self, _mode: &AM) {
+        // Unimplemented
+        println!("Unimplemented opcode *SYA");
+    }
+
+    fn u_xaa(&mut self) {
+        // Unimplemented
+        println!("Unimplemented opcode *XAA");
+    }
+
+    fn u_xas(&mut self, _mode: &AM) {
+        // Unimplemented
+        println!("Unimplemented opcode *XAA");
     }
 
     fn push(&mut self, data: u8) {

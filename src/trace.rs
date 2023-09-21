@@ -124,7 +124,7 @@ pub fn trace(cpu: &CPU) -> String {
         .join(" ");
 
     format!(
-        "{:04x}  {:8}  {:3} {:26}  A:{:02x} X:{:02x} Y:{:02x} P:{:02x} SP:{:02x}",
+        "{:04x}  {:8} {:>4} {:26}  A:{:02x} X:{:02x} Y:{:02x} P:{:02x} SP:{:02x}",
         pc,
         hex_str,
         ops_struct.name,

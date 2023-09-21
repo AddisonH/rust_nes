@@ -234,6 +234,160 @@ lazy_static! {
         OPS::new(0x8A, "TXA", 1, 2, AM::Implicit),
         OPS::new(0x9A, "TXS", 1, 2, AM::Implicit),
         OPS::new(0x98, "TYA", 1, 2, AM::Implicit),
+
+        // Unnofficial codes
+        // AND accumulator
+        OPS::new(0x0B, "*AAC", 2, 2, AM::Immediate),
+        OPS::new(0x2B, "*AAC", 2, 2, AM::Immediate),
+
+        // AND X
+        OPS::new(0x87, "*SAX", 2, 3, AM::ZeroPage),
+        OPS::new(0x97, "*SAX", 2, 4, AM::ZeroPageY),
+        OPS::new(0x83, "*SAX", 2, 6, AM::IndirectX),
+        OPS::new(0x8F, "*SAX", 3, 4, AM::Absolute),
+
+        // AND acc with rotate right
+        OPS::new(0x6B, "*AAR", 2, 2, AM::Immediate),
+
+        // AND acc with shift right
+        OPS::new(0x4B, "*ASR", 2, 2, AM::Immediate),
+
+        // AND acc with transfer x
+        OPS::new(0xAB, "*ATX", 2, 2, AM::Immediate),
+
+        // AND x with acc then AND with 7 and store in memory
+        OPS::new(0x9F, "*AXA", 3, 5, AM::AbsoluteY),
+        OPS::new(0x93, "*AXA", 2, 6, AM::IndirectY),
+
+        // AND X with acc and store in x, then subtract byte from x (without borrow)
+        OPS::new(0xCB, "*AXS", 2, 2, AM::Immediate),
+
+        // Subract 1 from memory (without borrow)
+        OPS::new(0xC7, "*DCP", 2, 5, AM::ZeroPage),
+        OPS::new(0xD7, "*DCP", 2, 6, AM::ZeroPageX),
+        OPS::new(0xCF, "*DCP", 3, 6, AM::Absolute),
+        OPS::new(0xDF, "*DCP", 3, 7, AM::AbsoluteX),
+        OPS::new(0xDB, "*DCP", 3, 7, AM::AbsoluteY),
+        OPS::new(0xC3, "*DCP", 2, 8, AM::IndirectX),
+        OPS::new(0xD3, "*DCP", 2, 8, AM::IndirectY),
+
+        // Double NOP
+        OPS::new(0x04, "*NOP", 2, 3, AM::ZeroPage),
+        OPS::new(0x14, "*NOP", 2, 4, AM::ZeroPageX),
+        OPS::new(0x34, "*NOP", 2, 4, AM::ZeroPageX),
+        OPS::new(0x44, "*NOP", 2, 3, AM::ZeroPage),
+        OPS::new(0x54, "*NOP", 2, 4, AM::ZeroPageX),
+        OPS::new(0x64, "*NOP", 2, 3, AM::ZeroPage),
+        OPS::new(0x74, "*NOP", 2, 4, AM::ZeroPageX),
+        OPS::new(0x80, "*NOP", 2, 2, AM::Immediate),
+        OPS::new(0x82, "*NOP", 2, 2, AM::Immediate),
+        OPS::new(0x89, "*NOP", 2, 2, AM::Immediate),
+        OPS::new(0xC2, "*NOP", 2, 2, AM::Immediate),
+        OPS::new(0xD4, "*NOP", 2, 4, AM::ZeroPageX),
+        OPS::new(0xE2, "*NOP", 2, 2, AM::Immediate),
+        OPS::new(0xF4, "*NOP", 2, 4, AM::ZeroPageX),
+
+        // Increment memory, subtract memory from accumulator (with borrow)
+        OPS::new(0xE7, "*ISB", 2, 5, AM::ZeroPage),
+        OPS::new(0xF7, "*ISB", 2, 6, AM::ZeroPageX),
+        OPS::new(0xEF, "*ISB", 3, 6, AM::Absolute),
+        OPS::new(0xFF, "*ISB", 3, 7, AM::AbsoluteX),
+        OPS::new(0xFB, "*ISB", 3, 7, AM::AbsoluteY),
+        OPS::new(0xE3, "*ISB", 2, 8, AM::IndirectX),
+        OPS::new(0xF3, "*ISB", 2, 8, AM::IndirectY),
+
+        // Kills processor
+        OPS::new(0x02, "*KIL", 1, 1, AM::Implicit),
+        OPS::new(0x12, "*KIL", 1, 1, AM::Implicit),
+        OPS::new(0x22, "*KIL", 1, 1, AM::Implicit),
+        OPS::new(0x32, "*KIL", 1, 1, AM::Implicit),
+        OPS::new(0x42, "*KIL", 1, 1, AM::Implicit),
+        OPS::new(0x52, "*KIL", 1, 1, AM::Implicit),
+        OPS::new(0x62, "*KIL", 1, 1, AM::Implicit),
+        OPS::new(0x72, "*KIL", 1, 1, AM::Implicit),
+        OPS::new(0x92, "*KIL", 1, 1, AM::Implicit),
+        OPS::new(0xB2, "*KIL", 1, 1, AM::Implicit),
+        OPS::new(0xD2, "*KIL", 1, 1, AM::Implicit),
+        OPS::new(0xF2, "*KIL", 1, 1, AM::Implicit),
+
+        // AND memory with SP, transfer to acc, x, and SP
+        OPS::new(0xBB, "*LAR", 3, 4 /* +1 cross page */, AM::AbsoluteY),
+
+        // Load acc and x with memory
+        OPS::new(0xA7, "*LAX", 2, 3, AM::ZeroPage),
+        OPS::new(0xB7, "*LAX", 2, 4, AM::ZeroPageY),
+        OPS::new(0xAF, "*LAX", 3, 4, AM::Absolute),
+        OPS::new(0xBF, "*LAX", 3, 4 /* +1 cross page */, AM::AbsoluteY),
+        OPS::new(0xA3, "*LAX", 2, 6, AM::IndirectX),
+        OPS::new(0xB3, "*LAX", 2, 5 /* +1 cross page */, AM::IndirectY),
+
+        // NOP
+        OPS::new(0x1A, "*NOP", 1, 2, AM::Implicit),
+        OPS::new(0x3A, "*NOP", 1, 2, AM::Implicit),
+        OPS::new(0x5A, "*NOP", 1, 2, AM::Implicit),
+        OPS::new(0x7A, "*NOP", 1, 2, AM::Implicit),
+        OPS::new(0xDA, "*NOP", 1, 2, AM::Implicit),
+        OPS::new(0xFA, "*NOP", 1, 2, AM::Implicit),
+
+        // Rotate left, then AND accumulator with memory
+        OPS::new(0x27, "*RLA", 2, 5, AM::ZeroPage),
+        OPS::new(0x37, "*RLA", 2, 6, AM::ZeroPageX),
+        OPS::new(0x2F, "*RLA", 3, 6, AM::Absolute),
+        OPS::new(0x3F, "*RLA", 3, 7, AM::AbsoluteX),
+        OPS::new(0x3B, "*RLA", 3, 7, AM::AbsoluteY),
+        OPS::new(0x23, "*RLA", 2, 8, AM::IndirectX),
+        OPS::new(0x33, "*RLA", 2, 8, AM::IndirectY),
+
+        // Rotate right, then add memory to accumulator (with carry)
+        OPS::new(0x67, "*RRA", 2, 5, AM::ZeroPage),
+        OPS::new(0x77, "*RRA", 2, 6, AM::ZeroPageX),
+        OPS::new(0x6F, "*RRA", 3, 6, AM::Absolute),
+        OPS::new(0x7F, "*RRA", 3, 7, AM::AbsoluteX),
+        OPS::new(0x7B, "*RRA", 3, 7, AM::AbsoluteY),
+        OPS::new(0x63, "*RRA", 2, 8, AM::IndirectX),
+        OPS::new(0x73, "*RRA", 2, 8, AM::IndirectY),
+
+        // SBC
+        OPS::new(0xEB, "*SBC", 2, 2, AM::Immediate),
+
+        // Shift left, then OR accumulator with memory
+        OPS::new(0x07, "*SLO", 2, 5, AM::ZeroPage),
+        OPS::new(0x17, "*SLO", 2, 6, AM::ZeroPageX),
+        OPS::new(0x0F, "*SLO", 3, 6, AM::Absolute),
+        OPS::new(0x1F, "*SLO", 3, 7, AM::AbsoluteX),
+        OPS::new(0x1B, "*SLO", 3, 7, AM::AbsoluteY),
+        OPS::new(0x03, "*SLO", 2, 8, AM::IndirectX),
+        OPS::new(0x13, "*SLO", 2, 8, AM::IndirectY),
+
+        // Shift right, then EOR accumulator with memory
+        OPS::new(0x47, "*SRE", 2, 5, AM::ZeroPage),
+        OPS::new(0x57, "*SRE", 2, 6, AM::ZeroPageX),
+        OPS::new(0x4F, "*SRE", 3, 6, AM::Absolute),
+        OPS::new(0x5F, "*SRE", 3, 7, AM::AbsoluteX),
+        OPS::new(0x5B, "*SRE", 3, 7, AM::AbsoluteY),
+        OPS::new(0x43, "*SRE", 2, 8, AM::IndirectX),
+        OPS::new(0x53, "*SRE", 2, 8, AM::IndirectY),
+
+        // AND X with memory
+        OPS::new(0x9E, "*SXA", 3, 5, AM::AbsoluteY),
+
+        // And Y with memory
+        OPS::new(0x9C, "*SYA", 3, 5, AM::AbsoluteX),
+
+        // Triple NOP
+        OPS::new(0x0C, "*NOP", 3, 4, AM::Absolute),
+        OPS::new(0x1C, "*NOP", 3, 4 /* +1 cross page */, AM::AbsoluteX),
+        OPS::new(0x3C, "*NOP", 3, 4 /* +1 cross page */, AM::AbsoluteX),
+        OPS::new(0x5C, "*NOP", 3, 4 /* +1 cross page */, AM::AbsoluteX),
+        OPS::new(0x7C, "*NOP", 3, 4 /* +1 cross page */, AM::AbsoluteX),
+        OPS::new(0xDC, "*NOP", 3, 4 /* +1 cross page */, AM::AbsoluteX),
+        OPS::new(0xFC, "*NOP", 3, 4 /* +1 cross page */, AM::AbsoluteX),
+
+        // Mystery instruction
+        OPS::new(0x8B, "*XAA", 2, 2, AM::Immediate),
+
+        // AND X with accumulator and store in SP, then AND SP with memory
+        OPS::new(0x9B, "*XAS", 3, 5, AM::AbsoluteY),
     ];
 
     pub static ref OPS_MAP: HashMap<u8, &'static OPS> = {
